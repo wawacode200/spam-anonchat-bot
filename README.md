@@ -1,17 +1,53 @@
 # Base Aiogram Bot Template
 
-Базовый шаблон для Telegram-ботов на aiogram 3 с:
+Базовый шаблон для Telegram-ботов на aiogram 3.
 
-- aiogram 3
-- SQLAlchemy + SQLite
-- Alembic
-- Middleware
-- Feature-based архитектурой
-- Admin системой
-- Profile системой
-- Git/GitHub workflow
-- Systemd deploy
-- Автоперезапуском при разработке
+Стек:
+
+* aiogram 3
+* SQLAlchemy + SQLite
+* Alembic
+* Middleware
+* Feature-based архитектура
+* Systemd
+* GitHub Actions
+* MSK timezone helpers
+
+---
+
+# Используемые версии
+
+```txt
+aiogram==3.20.0.post0
+python-dotenv==1.1.0
+SQLAlchemy==2.0.41
+aiosqlite==0.21.0
+greenlet==3.2.1
+alembic==1.16.5
+watchdog==6.0.0
+```
+
+---
+
+# Python версия
+
+Шаблон рассчитан на:
+
+```text
+Python 3.12.x
+```
+
+Проверка:
+
+```bash
+python --version
+```
+
+Должно быть:
+
+```text
+Python 3.12.x
+```
 
 ---
 
@@ -24,8 +60,6 @@ project/
 ├── .gitignore
 ├── requirements.txt
 ├── README.md
-├── DEPLOY.md
-├── commands.md
 ├── alembic.ini
 │
 ├── main.py
@@ -63,13 +97,14 @@ project/
 │   └── utils.py
 │
 └── migrations/
+    └── versions/
 ```
 
 ---
 
 # Архитектура
 
-Новая функциональность создаётся внутри `features`.
+Каждая фича живёт отдельно.
 
 Пример:
 
@@ -81,14 +116,12 @@ features/support/
 ├── callbacks.py
 ├── keyboards.py
 ├── texts.py
-├── states.py
+└── states.py
 ```
 
 Создавать только нужные файлы.
 
-Например:
-
-Простая страница:
+Простая фича:
 
 ```text
 features/start/
@@ -97,7 +130,7 @@ features/start/
 └── texts.py
 ```
 
-Сложная логика:
+Сложная:
 
 ```text
 features/payments/
@@ -110,6 +143,14 @@ features/payments/
 └── states.py
 ```
 
+Не плодить:
+
+```text
+handlers/
+keyboards/
+texts/
+```
+
 ---
 
 # Создание нового бота
@@ -117,8 +158,7 @@ features/payments/
 Клонировать шаблон:
 
 ```bash
-git clone REPOSITORY_URL my-bot
-git clone git@github.com:wawacode200/base-aiogram-bot.git anon-spamer-bot
+git clone git@github.com:wawacode200/base-aiogram-bot.git my-bot
 ```
 
 Перейти:
@@ -131,42 +171,39 @@ cd my-bot
 
 ```bash
 rm -rf .git
-```
-
-Создать новый:
-
-```bash
 git init
 ```
 
 Создать venv:
 
-```bash
-python3 -m venv .venv
-```
-
-Активировать:
-
 Mac/Linux:
 
 ```bash
 python3.12 -m venv .venv
+source .venv/bin/activate
 ```
 
 Windows:
 
 ```bash
+python -m venv .venv
 .venv\Scripts\activate
+```
+
+Проверить:
+
+```bash
+python --version
 ```
 
 Установить зависимости:
 
 ```bash
-python -m pip install --upgrade pip
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Создать env:
+Создать `.env`:
 
 ```bash
 cp .env.example .env
@@ -176,25 +213,23 @@ cp .env.example .env
 
 # .env
 
-Пример:
-
 ```env
-BOT_TOKEN=YOUR_TOKEN
-ADMINS=123456789
+BOT_TOKEN=
+ADMINS=
 DATABASE_URL=sqlite+aiosqlite:///database/bot.db
 ```
 
-ADMINS:
+Пример:
 
 ```env
-ADMINS=123,456,789
+BOT_TOKEN=123456:ABC
+ADMINS=123456789,987654321
+DATABASE_URL=sqlite+aiosqlite:///database/bot.db
 ```
 
 ---
 
 # Локальный запуск
-
-Запуск:
 
 ```bash
 python main.py
@@ -204,10 +239,32 @@ python main.py
 
 # База данных
 
-Создать миграцию:
+Создание миграции:
 
 ```bash
-alembic revision --autogenerate -m "message"
+alembic revision --autogenerate -m "create users table"
+```
+
+После создания открыть:
+
+```text
+migrations/versions/
+```
+
+Проверить файл:
+
+Плохо:
+
+```python
+def upgrade():
+    pass
+```
+
+Нормально:
+
+```python
+def upgrade():
+    op.create_table(...)
 ```
 
 Применить:
@@ -216,13 +273,7 @@ alembic revision --autogenerate -m "message"
 alembic upgrade head
 ```
 
-Откатить:
-
-```bash
-alembic downgrade -1
-```
-
-Текущая:
+Текущая версия:
 
 ```bash
 alembic current
@@ -234,13 +285,106 @@ alembic current
 alembic history
 ```
 
+Откат:
+
+```bash
+alembic downgrade -1
+```
+
+---
+
+# Изменение БД
+
+Изменить модель:
+
+```python
+balance: Mapped[int] = mapped_column(
+    Integer,
+    default=0,
+)
+```
+
+Рабочий цикл:
+
+```text
+1. Изменил models.py
+2. alembic revision --autogenerate
+3. Проверил миграцию
+4. alembic upgrade head
+```
+
+Создать:
+
+```bash
+alembic revision --autogenerate -m "add balance"
+```
+
+Применить:
+
+```bash
+alembic upgrade head
+```
+
+---
+
+# Если миграция пустая
+
+Если получил:
+
+```python
+def upgrade():
+    pass
+```
+
+Проверить:
+
+```python
+from database.base import Base
+import database.models
+
+target_metadata = Base.metadata
+```
+
+Не менять:
+
+```python
+target_metadata = User.metadata
+```
+
+Не удалять:
+
+```python
+import database.models
+```
+
+---
+
+# Полный сброс Alembic
+
+Удалить миграции:
+
+```bash
+rm migrations/versions/*.py
+```
+
+Удалить базу:
+
+```bash
+rm database/bot.db
+```
+
+Создать заново:
+
+```bash
+alembic revision --autogenerate -m "init"
+alembic upgrade head
+```
+
 ---
 
 # GitHub
 
 Добавить удалённый репозиторий:
-
-SSH:
 
 ```bash
 git remote add origin git@github.com:USERNAME/REPOSITORY.git
@@ -256,6 +400,8 @@ git remote -v
 
 ```bash
 git branch -M main
+git add .
+git commit -m "init"
 git push -u origin main
 ```
 
@@ -279,7 +425,7 @@ cd /root/bots
 Клонировать:
 
 ```bash
-git clone REPOSITORY_URL
+git clone git@github.com:USERNAME/PROJECT_NAME.git
 ```
 
 Перейти:
@@ -291,12 +437,7 @@ cd PROJECT_NAME
 Создать venv:
 
 ```bash
-python3 -m venv .venv
-```
-
-Активировать:
-
-```bash
+python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -319,7 +460,7 @@ nano .env
 alembic upgrade head
 ```
 
-Проверка:
+Проверить:
 
 ```bash
 python main.py
@@ -332,10 +473,8 @@ python main.py
 Создать:
 
 ```bash
-nano /etc/systemd/system/bot.service
+nano /etc/systemd/system/PROJECT_NAME.service
 ```
-
-Содержимое:
 
 ```ini
 [Unit]
@@ -354,87 +493,116 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Обновить:
+Запуск:
 
 ```bash
 systemctl daemon-reload
-```
-
-Включить:
-
-```bash
-systemctl enable bot
-```
-
-Запустить:
-
-```bash
-systemctl start bot
-```
-
-Статус:
-
-```bash
-systemctl status bot
+systemctl enable PROJECT_NAME
+systemctl start PROJECT_NAME
 ```
 
 Логи:
 
 ```bash
-journalctl -u bot -f
+journalctl -u PROJECT_NAME -f
 ```
 
-Перезапуск:
+Рестарт:
 
 ```bash
-systemctl restart bot
-```
-
-Остановить:
-
-```bash
-systemctl stop bot
+systemctl restart PROJECT_NAME
 ```
 
 ---
 
-# Обновление бота
+# GitHub Actions автодеплой
+
+Создать:
 
 ```bash
-cd /root/bots/PROJECT_NAME
+mkdir -p .github/workflows
+```
 
-git pull
+Создать:
 
-source .venv/bin/activate
+```text
+.github/workflows/deploy.yml
+```
 
-pip install -r requirements.txt
+```yaml
+name: Deploy
 
-alembic upgrade head
+on:
+  push:
+    branches:
+      - main
 
-systemctl restart bot
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+
+          script: |
+            cd /root/bots/PROJECT_NAME
+
+            git pull
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            alembic upgrade head
+            systemctl restart PROJECT_NAME
 ```
 
 ---
 
-# Рекомендации
+# GitHub Secrets
 
-Не коммитить:
-
-```text
-.env
-.venv
-.idea
-*.db
-*.sqlite
-*.log
-__pycache__
-```
-
-Коммитить:
+Открыть:
 
 ```text
-migrations/versions
+Repository
+→ Settings
+→ Secrets and variables
+→ Actions
 ```
+
+Создать:
+
+```text
+SERVER_HOST
+SERVER_SSH_KEY
+```
+
+---
+
+# Рабочий цикл
+
+```text
+1. Пишешь код
+2. git add .
+3. git commit -m "update"
+4. git push
+
+Дальше автоматически:
+
+5. GitHub Actions
+6. SSH на сервер
+7. git pull
+8. pip install
+9. alembic upgrade
+10. systemctl restart
+```
+
+---
+
+# Время
 
 Использовать:
 
@@ -451,13 +619,15 @@ datetime.utcnow()
 
 ---
 
-# TODO для нового проекта
+# Не коммитить
 
-- [ ] BOT_TOKEN
-- [ ] ADMINS
-- [ ] модели БД
-- [ ] миграции
-- [ ] middleware
-- [ ] админка
-- [ ] деплой
-- [ ] webhook (если нужен)
+```text
+.env
+.venv
+.idea
+*.db
+*.sqlite
+*.session
+*.log
+__pycache__/
+```
