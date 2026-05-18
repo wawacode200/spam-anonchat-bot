@@ -6,7 +6,13 @@ def start_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="👤 Профиль",
+                    text="",
+                    callback_data="profile",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="",
                     callback_data="profile",
                 )
             ]
