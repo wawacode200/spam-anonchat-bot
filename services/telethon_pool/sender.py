@@ -83,9 +83,9 @@ class TelethonSender:
                         logger.info(
                             f"🎯 {session.name}: собеседник найден"
                         )
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(1)
                         await client.send_message(entity=chat_id, message=text)
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(1)
                         await client.send_message(entity=chat_id, message="/stop")
                         logger.info(
                             f"✉️ {session.name}: сообщение отправлено"
