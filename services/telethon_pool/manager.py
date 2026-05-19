@@ -41,7 +41,7 @@ COUNTRY_CODES_BY_CALLING_CODE = {
 }
 
 PHONE_SESSION_RE = re.compile(r"^\+\d{8,20}$")
-SESSION_CHECK_CONCURRENCY = 20
+SESSION_CHECK_CONCURRENCY = 40
 
 
 class TelethonPoolManager:
@@ -129,6 +129,15 @@ class TelethonPoolManager:
                     )
                     await client.disconnect()
                     return
+
+                if settings.TARGET_CHAT_ID:
+                    await client.send_message(
+                        entity=settings.TARGET_CHAT_ID,
+                        message="/start",
+                    )
+                    logger.info(
+                        f"▶️ {session_name}: /start отправлен в целевой чат"
+                    )
 
                 self._clients[session_name] = client
                 pool_session = self._build_pool_session(
