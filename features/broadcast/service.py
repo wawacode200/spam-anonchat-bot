@@ -167,6 +167,7 @@ class BroadcastService:
     async def check_sessions(
         self,
         keep_connected: bool = False,
+        active_limit: int | None = None,
     ) -> tuple[bool, str]:
         if self.is_running:
             return False, "Нельзя проверять сессии во время рассылки"
@@ -176,7 +177,9 @@ class BroadcastService:
         self.is_checking = True
 
         try:
-            await self.pool.load_clients()
+            await self.pool.load_clients(
+                active_limit=active_limit,
+            )
             self.normalize_batch_size(
                 self.pool.loaded_sessions_count()
             )
@@ -206,6 +209,7 @@ class BroadcastService:
 
         ok, message = await self.check_sessions(
             keep_connected=True,
+            active_limit=max(1, self.desired_batch_size),
         )
 
         if not ok:

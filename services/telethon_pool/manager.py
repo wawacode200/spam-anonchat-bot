@@ -58,7 +58,10 @@ class TelethonPoolManager:
         self._index = 0
         self.last_errors: list[str] = []
 
-    async def load_clients(self) -> None:
+    async def load_clients(
+        self,
+        active_limit: int | None = None,
+    ) -> None:
         await self.disconnect_all()
         self.sessions.clear()
         self._clients.clear()
@@ -75,6 +78,7 @@ class TelethonPoolManager:
                 file=file,
                 persisted_states=persisted_states,
                 semaphore=semaphore,
+                active_limit=active_limit,
             )
             for file in self.sessions_dir.glob("*.session")
         ]
@@ -90,8 +94,15 @@ class TelethonPoolManager:
         file: Path,
         persisted_states,
         semaphore: asyncio.Semaphore,
+        active_limit: int | None,
     ) -> None:
         async with semaphore:
+            if (
+                active_limit is not None
+                and self.active_sessions_count() >= active_limit
+            ):
+                return
+
             session_name = file.stem
             country_code = self.detect_country_code(session_name)
 
