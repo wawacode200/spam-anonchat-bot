@@ -74,12 +74,7 @@ settings = Settings(
     APP_ID=parse_int(getenv("APP_ID")),
     API_HASH=getenv("API_HASH", ""),
     PROXY=parse_proxy(),
-    BROADCAST_TEXT=(
-        "💋 18+ Анонимный чат @AnonSeaChatRobot\n"
-        "🔥 Тысячи онлайн\n"
-        "🫶 Интим\n"
-        "💕 Найди пару\n"
-    ),
+    BROADCAST_TEXT="AnonSeaChatRobot",
     TARGET_CHAT_ID=getenv("TARGET_CHAT_ID", ""),
     OPENAI_API_KEY=getenv("OPENAI_API_KEY", ""),
 )
