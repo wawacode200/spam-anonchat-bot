@@ -43,7 +43,6 @@ COUNTRY_CODES_BY_CALLING_CODE = {
 PHONE_SESSION_RE = re.compile(r"^\+\d{8,20}$")
 SESSION_CHECK_CONCURRENCY = 40
 
-
 class TelethonPoolManager:
     def __init__(
         self,
