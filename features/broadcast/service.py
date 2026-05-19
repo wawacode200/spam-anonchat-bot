@@ -86,15 +86,12 @@ class BroadcastService:
         if sessions_count is None:
             sessions_count = self.session_files_count()
 
+        self.desired_batch_size = max(1, self.desired_batch_size)
+
         if sessions_count == 0:
-            self.desired_batch_size = 0
             self.effective_batch_size = 0
             return
 
-        self.desired_batch_size = min(
-            max(1, self.desired_batch_size),
-            sessions_count,
-        )
         self.effective_batch_size = min(
             self.desired_batch_size,
             max(0, self.available_sessions_count()),
