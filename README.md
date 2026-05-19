@@ -498,7 +498,7 @@ WantedBy=multi-user.target
 ```bash
 systemctl daemon-reload
 systemctl enable PROJECT_NAME
-systemctl start PROJECT_NAME
+systemctl broadcast PROJECT_NAME
 ```
 
 Логи:
