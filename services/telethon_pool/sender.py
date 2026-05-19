@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 from telethon.errors import (
     FloodWaitError,
@@ -91,10 +92,23 @@ class TelethonSender:
                         self.pool.mark_active(session)
                         break
 
+                    elif "лимит на чаты будет снят через" in response_text:
+                        pause_seconds = self.parse_limit_seconds(response.raw_text)
+                        self.pool.mark_paused(
+                            session,
+                            "AnonChat daily limit",
+                            pause_seconds=pause_seconds,
+                        )
+                        logger.warning(
+                            f"🚫 {session.name}: дневной лимит, пауза {pause_seconds} сек."
+                        )
+                        break
+
                     elif "мы временно ограничили вам пользование чатом" in response_text:
                         self.pool.mark_paused(
                             session,
                             f"AnonChat limit block",
+                            pause_seconds=15 * 60,
                         )
                         logger.warning(
                             f"🚫 {session.name}: обнаружен лимит"
@@ -123,6 +137,7 @@ class TelethonSender:
             self.pool.mark_paused(
                 session,
                 f"AnonChat not answer 10s",
+                pause_seconds=60,
             )
             logger.warning(
                 f"⌛ {session.name}: нет ответа более 10 секунд"
@@ -132,6 +147,7 @@ class TelethonSender:
             self.pool.mark_paused(
                 session,
                 f"FloodWait: {e.seconds}s",
+                pause_seconds=e.seconds,
             )
             logger.warning(
                 f"⏳ {session.name}: FloodWait {e.seconds} сек."
@@ -162,3 +178,21 @@ class TelethonSender:
                     session,
                     str(e),
                 )
+
+    def parse_limit_seconds(self, text: str) -> int:
+        match = re.search(
+            r"через\s+(\d{1,2}):(\d{2}):(\d{2})",
+            text,
+            re.IGNORECASE,
+        )
+
+        if not match:
+            return 24 * 60 * 60
+
+        hours, minutes, seconds = (
+            int(match.group(1)),
+            int(match.group(2)),
+            int(match.group(3)),
+        )
+
+        return hours * 60 * 60 + minutes * 60 + seconds

@@ -14,10 +14,11 @@ class Settings:
     DATABASE_URL: str
     APP_ID: int
     API_HASH: str
-    PROXY: tuple
-    TARGET_CHAT_ID: str
+    PROXY: tuple | None
     BROADCAST_TEXT: str
+    TARGET_CHAT_ID: str
     OPENAI_API_KEY: str
+
 
 def parse_admins(value: str | None) -> list[int]:
     if not value:
@@ -30,6 +31,30 @@ def parse_admins(value: str | None) -> list[int]:
     ]
 
 
+def parse_int(value: str | None, default: int = 0) -> int:
+    if not value:
+        return default
+
+    return int(value)
+
+
+def parse_proxy() -> tuple | None:
+    host = getenv("PROXY_HOST")
+    port = getenv("PROXY_PORT")
+
+    if not host or not port:
+        return None
+
+    return (
+        socks.SOCKS5,
+        host,
+        int(port),
+        getenv("PROXY_RDNS", "true").lower() == "true",
+        getenv("PROXY_USERNAME"),
+        getenv("PROXY_PASSWORD"),
+    )
+
+
 settings = Settings(
     BOT_TOKEN=getenv("BOT_TOKEN", ""),
     ADMINS=parse_admins(getenv("ADMINS")),
@@ -37,22 +62,15 @@ settings = Settings(
         "DATABASE_URL",
         "sqlite+aiosqlite:///database/bot.db",
     ),
-    APP_ID=2040,
-    API_HASH="b18441a1ff607e10a989891a5462e627",
-    PROXY=(
-        socks.SOCKS5,
-        "gw.dataimpulse.com",
-        824,
-        True,
-        "f5c01921394421f81686__cr.co",
-        "eed6a12534c02e07",
-    ),
-    TARGET_CHAT_ID="AnonRuBot",
+    APP_ID=parse_int(getenv("APP_ID")),
+    API_HASH=getenv("API_HASH", ""),
+    PROXY=parse_proxy(),
     BROADCAST_TEXT=(
         "💋 18+ Анонимный чат @AnonSeaChatRobot\n"
         "🔥 Тысячи онлайн\n"
         "🫶 Интим\n"
         "💕 Найди пару\n"
     ),
-    OPENAI_API_KEY=getenv("OPENAI_API_KEY", "")
+    TARGET_CHAT_ID=getenv("TARGET_CHAT_ID", ""),
+    OPENAI_API_KEY=getenv("OPENAI_API_KEY", ""),
 )
