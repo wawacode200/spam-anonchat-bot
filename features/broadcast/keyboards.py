@@ -7,6 +7,8 @@ from aiogram.types import (
 
 
 MAIN_MENU_BUTTON_TEXT = "Главное меню"
+START_BUTTON_TEXT = "Запустить"
+STOP_BUTTON_TEXT = "Остановить"
 
 
 def start_keyboard(
@@ -81,6 +83,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(text=MAIN_MENU_BUTTON_TEXT),
+                KeyboardButton(text=START_BUTTON_TEXT),
+                KeyboardButton(text=STOP_BUTTON_TEXT),
             ],
         ],
         resize_keyboard=True,

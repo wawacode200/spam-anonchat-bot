@@ -6,7 +6,13 @@ from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .keyboards import MAIN_MENU_BUTTON_TEXT, main_menu_keyboard, start_keyboard
+from .keyboards import (
+    MAIN_MENU_BUTTON_TEXT,
+    START_BUTTON_TEXT,
+    STOP_BUTTON_TEXT,
+    main_menu_keyboard,
+    start_keyboard,
+)
 from .service import BroadcastService
 from .texts import render_start_text
 
@@ -148,6 +154,19 @@ async def send_main_menu(
     )
 
 
+async def start_broadcast_action() -> tuple[bool, str]:
+    validation_errors = service.validate_start()
+
+    if validation_errors:
+        return False, "\n".join(validation_errors)
+
+    return await service.start()
+
+
+async def stop_broadcast_action() -> tuple[bool, str]:
+    return await service.stop()
+
+
 @router.message(CommandStart())
 async def broadcast_menu(
     message: Message,
@@ -162,6 +181,43 @@ async def broadcast_menu_button(
     session: AsyncSession,
 ) -> None:
     await send_main_menu(message, session)
+
+
+@router.message(F.text == START_BUTTON_TEXT)
+async def start_broadcast_button(message: Message) -> None:
+    await message.answer("Запускаю рассылку...")
+    ok, text = await start_broadcast_action()
+
+    await message.answer(
+        text,
+        reply_markup=main_menu_keyboard(),
+    )
+
+    await message.answer(
+        render_menu_text(),
+        reply_markup=render_keyboard(),
+    )
+
+    if not ok:
+        logging.getLogger("app").warning(text)
+
+
+@router.message(F.text == STOP_BUTTON_TEXT)
+async def stop_broadcast_button(message: Message) -> None:
+    ok, text = await stop_broadcast_action()
+
+    await message.answer(
+        text,
+        reply_markup=main_menu_keyboard(),
+    )
+
+    await message.answer(
+        render_menu_text(),
+        reply_markup=render_keyboard(),
+    )
+
+    if not ok:
+        logging.getLogger("app").warning(text)
 
 
 @router.callback_query(F.data == "bc:text")
@@ -288,14 +344,8 @@ async def change_interval(
 
 @router.callback_query(F.data == "bc:broadcast")
 async def start_broadcast(callback: CallbackQuery) -> None:
-    validation_errors = service.validate_start()
-
-    if validation_errors:
-        await callback.answer("\n".join(validation_errors), show_alert=True)
-        return
-
     await callback.answer("Запускаю рассылку...")
-    ok, message = await service.start()
+    ok, message = await start_broadcast_action()
 
     await update_menu(callback)
     if not ok:
@@ -304,7 +354,7 @@ async def start_broadcast(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "bc:stop")
 async def stop_broadcast(callback: CallbackQuery) -> None:
-    ok, message = await service.stop()
+    ok, message = await stop_broadcast_action()
 
     await update_menu(callback)
     await callback.answer(message, show_alert=not ok)
