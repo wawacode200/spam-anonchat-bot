@@ -35,12 +35,21 @@ def parse_int(value: str | None, default: int = 0) -> int:
     if not value:
         return default
 
-    return int(value)
+    return int(clean_env(value))
+
+
+def clean_env(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+
+    return cleaned.strip("'\"").strip()
 
 
 def parse_proxy() -> tuple | None:
-    host = getenv("PROXY_HOST")
-    port = getenv("PROXY_PORT")
+    host = clean_env(getenv("PROXY_HOST"))
+    port = clean_env(getenv("PROXY_PORT"))
 
     if not host or not port:
         return None
@@ -49,9 +58,9 @@ def parse_proxy() -> tuple | None:
         socks.SOCKS5,
         host,
         int(port),
-        getenv("PROXY_RDNS", "true").lower() == "true",
-        getenv("PROXY_USERNAME"),
-        getenv("PROXY_PASSWORD"),
+        clean_env(getenv("PROXY_RDNS", "true")).lower() == "true",
+        clean_env(getenv("PROXY_USERNAME")),
+        clean_env(getenv("PROXY_PASSWORD")),
     )
 
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,35 @@ from config import settings
 from database.repositories.telethon_sessions import TelethonSessionsRepository
 from database.session import async_session_maker
 from services.telethon_pool.session import PoolSession
+
+
+CANADIAN_AREA_CODES = {
+    "204", "226", "236", "249", "250", "263", "289", "306", "343",
+    "354", "365", "367", "368", "382", "403", "416", "418", "431",
+    "437", "438", "450", "468", "474", "506", "514", "519", "548",
+    "579", "581", "584", "587", "604", "613", "639", "647", "672",
+    "683", "705", "709", "742", "778", "780", "782", "807", "819",
+    "825", "867", "873", "879", "902", "905",
+}
+
+COUNTRY_CODES_BY_CALLING_CODE = {
+    "34": "es",
+    "39": "it",
+    "44": "gb",
+    "49": "de",
+    "51": "pe",
+    "52": "mx",
+    "54": "ar",
+    "55": "br",
+    "56": "cl",
+    "57": "co",
+    "58": "ve",
+    "593": "ec",
+    "591": "bo",
+    "598": "uy",
+}
+
+PHONE_SESSION_RE = re.compile(r"^\+\d{8,20}$")
 
 
 class TelethonPoolManager:
@@ -40,11 +70,31 @@ class TelethonPoolManager:
 
         for file in self.sessions_dir.glob("*.session"):
             session_name = file.stem
+            country_code = self.detect_country_code(session_name)
+
+            if country_code is None:
+                error = "invalid phone session name"
+                self.last_errors.append(f"{session_name}: {error}")
+                logger.warning(
+                    f"⚠️ {session_name} пропущена: имя должно быть номером телефона"
+                )
+                continue
+
+            proxy = self.build_proxy(country_code)
+
+            if proxy is None:
+                error = f"proxy not configured for country {country_code}"
+                self.last_errors.append(f"{session_name}: {error}")
+                logger.warning(
+                    f"⚠️ {session_name} пропущена: прокси не настроен"
+                )
+                continue
+
             client = TelegramClient(
                 str(file.with_suffix("")),
                 api_id=settings.APP_ID,
                 api_hash=settings.API_HASH,
-                # proxy=settings.PROXY,
+                proxy=proxy,
             )
 
             try:
@@ -93,6 +143,48 @@ class TelethonPoolManager:
 
         logger.info(
             f"📊 Загружено аккаунтов: {len(self.sessions)}"
+        )
+
+    def detect_country_code(self, session_name: str) -> str | None:
+        if not PHONE_SESSION_RE.fullmatch(session_name):
+            return None
+
+        digits = session_name[1:]
+
+        if digits.startswith("1"):
+            area_code = digits[1:4]
+
+            if area_code in CANADIAN_AREA_CODES:
+                return "ca"
+
+            return "us"
+
+        for calling_code, country_code in sorted(
+            COUNTRY_CODES_BY_CALLING_CODE.items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        ):
+            if digits.startswith(calling_code):
+                return country_code
+
+        return None
+
+    def build_proxy(self, country_code: str) -> tuple | None:
+        if settings.PROXY is None:
+            return None
+
+        proxy_type, host, port, rdns, username, password = settings.PROXY
+
+        if not username:
+            return settings.PROXY
+
+        return (
+            proxy_type,
+            host,
+            port,
+            rdns,
+            f"{username}{country_code}",
+            password,
         )
 
     async def _load_persisted_states(self):

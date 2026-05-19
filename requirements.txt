@@ -7,3 +7,4 @@ alembic==1.18.4
 telethon
 openai
 pysocks
+python-socks[asyncio]
