@@ -71,22 +71,99 @@ class TelethonPoolManager:
             "🔄 Начинается загрузка сессий..."
         )
 
+        files = list(self.sessions_dir.glob("*.session"))
+
+        if active_limit is None:
+            await self._load_all_clients(
+                files=files,
+                persisted_states=persisted_states,
+            )
+        else:
+            await self._load_clients_until_limit(
+                files=files,
+                persisted_states=persisted_states,
+                active_limit=active_limit,
+            )
+
+        logger.info(
+            f"📊 Загружено аккаунтов: {len(self.sessions)}"
+        )
+
+    async def _load_all_clients(
+        self,
+        files: list[Path],
+        persisted_states,
+    ) -> None:
         semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
         tasks = [
             self._load_client(
                 file=file,
                 persisted_states=persisted_states,
                 semaphore=semaphore,
-                active_limit=active_limit,
+                active_limit=None,
             )
-            for file in self.sessions_dir.glob("*.session")
+            for file in files
         ]
 
         await asyncio.gather(*tasks)
 
-        logger.info(
-            f"📊 Загружено аккаунтов: {len(self.sessions)}"
-        )
+    async def _load_clients_until_limit(
+        self,
+        files: list[Path],
+        persisted_states,
+        active_limit: int,
+    ) -> None:
+        semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
+        file_iterator = iter(files)
+        pending: set[asyncio.Task] = set()
+
+        def schedule_next() -> bool:
+            if self.active_sessions_count() >= active_limit:
+                return False
+
+            try:
+                file = next(file_iterator)
+            except StopIteration:
+                return False
+
+            pending.add(
+                asyncio.create_task(
+                    self._load_client(
+                        file=file,
+                        persisted_states=persisted_states,
+                        semaphore=semaphore,
+                        active_limit=active_limit,
+                    )
+                )
+            )
+            return True
+
+        for _ in range(SESSION_CHECK_CONCURRENCY):
+            if not schedule_next():
+                break
+
+        while pending:
+            done, pending = await asyncio.wait(
+                pending,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            for task in done:
+                await task
+
+            if self.active_sessions_count() >= active_limit:
+                for task in pending:
+                    task.cancel()
+
+                await asyncio.gather(
+                    *pending,
+                    return_exceptions=True,
+                )
+                break
+
+            while len(pending) < SESSION_CHECK_CONCURRENCY:
+                if not schedule_next():
+                    break
 
     async def _load_client(
         self,
