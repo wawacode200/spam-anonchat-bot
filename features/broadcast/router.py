@@ -142,6 +142,11 @@ async def send_main_menu(
         reply_markup=render_keyboard(),
     )
 
+    await message.answer(
+        "Кнопка главного меню закреплена ниже",
+        reply_markup=main_menu_keyboard(),
+    )
+
 
 @router.message(CommandStart())
 async def broadcast_menu(

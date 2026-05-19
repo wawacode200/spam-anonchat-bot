@@ -41,6 +41,7 @@ COUNTRY_CODES_BY_CALLING_CODE = {
 }
 
 PHONE_SESSION_RE = re.compile(r"^\+\d{8,20}$")
+SESSION_CHECK_CONCURRENCY = 20
 
 
 class TelethonPoolManager:
@@ -68,7 +69,29 @@ class TelethonPoolManager:
             "🔄 Начинается загрузка сессий..."
         )
 
-        for file in self.sessions_dir.glob("*.session"):
+        semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
+        tasks = [
+            self._load_client(
+                file=file,
+                persisted_states=persisted_states,
+                semaphore=semaphore,
+            )
+            for file in self.sessions_dir.glob("*.session")
+        ]
+
+        await asyncio.gather(*tasks)
+
+        logger.info(
+            f"📊 Загружено аккаунтов: {len(self.sessions)}"
+        )
+
+    async def _load_client(
+        self,
+        file: Path,
+        persisted_states,
+        semaphore: asyncio.Semaphore,
+    ) -> None:
+        async with semaphore:
             session_name = file.stem
             country_code = self.detect_country_code(session_name)
 
@@ -78,7 +101,7 @@ class TelethonPoolManager:
                 logger.warning(
                     f"⚠️ {session_name} пропущена: имя должно быть номером телефона"
                 )
-                continue
+                return
 
             proxy = self.build_proxy(country_code)
 
@@ -88,7 +111,7 @@ class TelethonPoolManager:
                 logger.warning(
                     f"⚠️ {session_name} пропущена: прокси не настроен"
                 )
-                continue
+                return
 
             client = TelegramClient(
                 str(file.with_suffix("")),
@@ -105,30 +128,13 @@ class TelethonPoolManager:
                         f"⚠️ {session_name} не авторизована"
                     )
                     await client.disconnect()
-                    continue
+                    return
 
                 self._clients[session_name] = client
-                persisted_state = persisted_states.get(session_name)
-                pool_session = PoolSession(
-                    name=session_name,
+                pool_session = self._build_pool_session(
+                    session_name=session_name,
+                    persisted_state=persisted_states.get(session_name),
                 )
-
-                if persisted_state is not None:
-                    pool_session.status = persisted_state.status
-                    pool_session.available_at = self._ensure_timezone(
-                        persisted_state.available_at,
-                    )
-                    pool_session.last_error = persisted_state.last_error
-
-                    if (
-                        pool_session.status == "paused"
-                        and pool_session.available_at is not None
-                        and pool_session.available_at <= now_msk()
-                    ):
-                        pool_session.status = "active"
-                        pool_session.available_at = None
-                        pool_session.last_error = None
-
                 self.sessions.append(pool_session)
                 logger.info(
                     f"✅ {session_name} успешно загружена"
@@ -141,9 +147,34 @@ class TelethonPoolManager:
                 )
                 await client.disconnect()
 
-        logger.info(
-            f"📊 Загружено аккаунтов: {len(self.sessions)}"
+    def _build_pool_session(
+        self,
+        session_name: str,
+        persisted_state,
+    ) -> PoolSession:
+        pool_session = PoolSession(
+            name=session_name,
         )
+
+        if persisted_state is None:
+            return pool_session
+
+        pool_session.status = persisted_state.status
+        pool_session.available_at = self._ensure_timezone(
+            persisted_state.available_at,
+        )
+        pool_session.last_error = persisted_state.last_error
+
+        if (
+            pool_session.status == "paused"
+            and pool_session.available_at is not None
+            and pool_session.available_at <= now_msk()
+        ):
+            pool_session.status = "active"
+            pool_session.available_at = None
+            pool_session.last_error = None
+
+        return pool_session
 
     def detect_country_code(self, session_name: str) -> str | None:
         if not PHONE_SESSION_RE.fullmatch(session_name):
