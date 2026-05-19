@@ -210,7 +210,7 @@ class BroadcastService:
 
         ok, message = await self.check_sessions(
             keep_connected=True,
-            file_limit=max(1, self.desired_batch_size),
+            active_limit=max(1, self.desired_batch_size),
             send_start=True,
         )
 

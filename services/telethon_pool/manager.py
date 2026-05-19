@@ -76,6 +76,7 @@ class TelethonPoolManager:
         self._index = 0
         self.last_errors: list[str] = []
         self._load_lock = asyncio.Lock()
+        self._sessions_lock = asyncio.Lock()
 
     async def load_clients(
         self,
@@ -144,7 +145,11 @@ class TelethonPoolManager:
         active_limit: int,
         send_start: bool,
     ) -> None:
-        semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
+        concurrency = min(
+            SESSION_CHECK_CONCURRENCY,
+            max(1, active_limit),
+        )
+        semaphore = asyncio.Semaphore(concurrency)
         file_iterator = iter(files)
         pending: set[asyncio.Task] = set()
 
@@ -170,7 +175,7 @@ class TelethonPoolManager:
             )
             return True
 
-        for _ in range(SESSION_CHECK_CONCURRENCY):
+        for _ in range(concurrency):
             if not schedule_next():
                 break
 
@@ -190,7 +195,7 @@ class TelethonPoolManager:
                 )
                 break
 
-            while len(pending) < SESSION_CHECK_CONCURRENCY:
+            while len(pending) < concurrency:
                 if not schedule_next():
                     break
 
@@ -257,27 +262,36 @@ class TelethonPoolManager:
                 )
 
                 if pool_session.status != "active":
-                    self.sessions.append(pool_session)
+                    async with self._sessions_lock:
+                        self.sessions.append(pool_session)
                     await self._safe_disconnect(client, session_name)
                     logger.info(
                         f"⏸ {session_name} загружена со статусом {pool_session.status}"
                     )
                     return
 
-                if send_start and settings.TARGET_CHAT_ID:
-                    await client.send_message(
-                        entity=settings.TARGET_CHAT_ID,
-                        message="/start",
-                    )
-                    logger.info(
-                        f"▶️ {session_name}: /start отправлен в целевой чат"
-                    )
+                async with self._sessions_lock:
+                    if (
+                        active_limit is not None
+                        and self.active_sessions_count() >= active_limit
+                    ):
+                        await self._safe_disconnect(client, session_name)
+                        return
 
-                self._clients[session_name] = client
-                self.sessions.append(pool_session)
-                logger.info(
-                    f"✅ {session_name} успешно загружена со статусом active"
-                )
+                    if send_start and settings.TARGET_CHAT_ID:
+                        await client.send_message(
+                            entity=settings.TARGET_CHAT_ID,
+                            message="/start",
+                        )
+                        logger.info(
+                            f"▶️ {session_name}: /start отправлен в целевой чат"
+                        )
+
+                    self._clients[session_name] = client
+                    self.sessions.append(pool_session)
+                    logger.info(
+                        f"✅ {session_name} успешно загружена со статусом active"
+                    )
 
             except Exception as e:
                 error_text = str(e)
