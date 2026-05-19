@@ -168,6 +168,8 @@ class BroadcastService:
         self,
         keep_connected: bool = False,
         active_limit: int | None = None,
+        file_limit: int | None = None,
+        send_start: bool = False,
     ) -> tuple[bool, str]:
         if self.is_running:
             return False, "Нельзя проверять сессии во время рассылки"
@@ -179,6 +181,8 @@ class BroadcastService:
         try:
             await self.pool.load_clients(
                 active_limit=active_limit,
+                file_limit=file_limit,
+                send_start=send_start,
             )
             self.normalize_batch_size(
                 self.pool.loaded_sessions_count()
@@ -209,7 +213,8 @@ class BroadcastService:
 
         ok, message = await self.check_sessions(
             keep_connected=True,
-            active_limit=max(1, self.desired_batch_size),
+            file_limit=max(1, self.desired_batch_size),
+            send_start=True,
         )
 
         if not ok:

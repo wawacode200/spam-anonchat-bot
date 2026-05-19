@@ -1,9 +1,12 @@
 import asyncio
 import logging
 import re
+import sqlite3
 from collections import Counter
+from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
+from telethon.sessions import SQLiteSession
 from telethon import TelegramClient
 
 from common.logging.logger import logger
@@ -42,6 +45,22 @@ COUNTRY_CODES_BY_CALLING_CODE = {
 
 PHONE_SESSION_RE = re.compile(r"^\+\d{8,20}$")
 SESSION_CHECK_CONCURRENCY = 40
+SESSION_SQLITE_BUSY_TIMEOUT_MS = 30_000
+
+
+class BusyTimeoutSQLiteSession(SQLiteSession):
+    def _cursor(self):
+        if self._conn is None:
+            self._conn = sqlite3.connect(
+                self.filename,
+                check_same_thread=False,
+                timeout=SESSION_SQLITE_BUSY_TIMEOUT_MS / 1000,
+            )
+            self._conn.execute(
+                f"PRAGMA busy_timeout={SESSION_SQLITE_BUSY_TIMEOUT_MS}"
+            )
+
+        return self._conn.cursor()
 
 class TelethonPoolManager:
     def __init__(
@@ -56,43 +75,53 @@ class TelethonPoolManager:
         self._clients: dict[str, TelegramClient] = {}
         self._index = 0
         self.last_errors: list[str] = []
+        self._load_lock = asyncio.Lock()
 
     async def load_clients(
         self,
         active_limit: int | None = None,
+        file_limit: int | None = None,
+        send_start: bool = False,
     ) -> None:
-        await self.disconnect_all()
-        self.sessions.clear()
-        self._clients.clear()
-        self.last_errors.clear()
-        persisted_states = await self._load_persisted_states()
+        async with self._load_lock:
+            await self.disconnect_all()
+            self.sessions.clear()
+            self._clients.clear()
+            self.last_errors.clear()
+            persisted_states = await self._load_persisted_states()
 
-        logger.info(
-            "🔄 Начинается загрузка сессий..."
-        )
-
-        files = list(self.sessions_dir.glob("*.session"))
-
-        if active_limit is None:
-            await self._load_all_clients(
-                files=files,
-                persisted_states=persisted_states,
-            )
-        else:
-            await self._load_clients_until_limit(
-                files=files,
-                persisted_states=persisted_states,
-                active_limit=active_limit,
+            logger.info(
+                "🔄 Начинается загрузка сессий..."
             )
 
-        logger.info(
-            f"📊 Загружено аккаунтов: {len(self.sessions)}"
-        )
+            files = sorted(self.sessions_dir.glob("*.session"))
+
+            if file_limit is not None:
+                files = files[:file_limit]
+
+            if active_limit is None:
+                await self._load_all_clients(
+                    files=files,
+                    persisted_states=persisted_states,
+                    send_start=send_start,
+                )
+            else:
+                await self._load_clients_until_limit(
+                    files=files,
+                    persisted_states=persisted_states,
+                    active_limit=active_limit,
+                    send_start=send_start,
+                )
+
+            logger.info(
+                f"📊 Загружено аккаунтов: {len(self.sessions)}"
+            )
 
     async def _load_all_clients(
         self,
         files: list[Path],
         persisted_states,
+        send_start: bool,
     ) -> None:
         semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
         tasks = [
@@ -101,6 +130,7 @@ class TelethonPoolManager:
                 persisted_states=persisted_states,
                 semaphore=semaphore,
                 active_limit=None,
+                send_start=send_start,
             )
             for file in files
         ]
@@ -112,6 +142,7 @@ class TelethonPoolManager:
         files: list[Path],
         persisted_states,
         active_limit: int,
+        send_start: bool,
     ) -> None:
         semaphore = asyncio.Semaphore(SESSION_CHECK_CONCURRENCY)
         file_iterator = iter(files)
@@ -133,6 +164,7 @@ class TelethonPoolManager:
                         persisted_states=persisted_states,
                         semaphore=semaphore,
                         active_limit=active_limit,
+                        send_start=send_start,
                     )
                 )
             )
@@ -152,9 +184,6 @@ class TelethonPoolManager:
                 await task
 
             if self.active_sessions_count() >= active_limit:
-                for task in pending:
-                    task.cancel()
-
                 await asyncio.gather(
                     *pending,
                     return_exceptions=True,
@@ -171,6 +200,7 @@ class TelethonPoolManager:
         persisted_states,
         semaphore: asyncio.Semaphore,
         active_limit: int | None,
+        send_start: bool,
     ) -> None:
         async with semaphore:
             if (
@@ -201,10 +231,14 @@ class TelethonPoolManager:
                 return
 
             client = TelegramClient(
-                str(file.with_suffix("")),
+                BusyTimeoutSQLiteSession(
+                    str(file.with_suffix(""))
+                ),
                 api_id=settings.APP_ID,
                 api_hash=settings.API_HASH,
                 proxy=proxy,
+                connection_retries=1,
+                timeout=10,
             )
 
             try:
@@ -214,10 +248,10 @@ class TelethonPoolManager:
                     logger.warning(
                         f"⚠️ {session_name} не авторизована"
                     )
-                    await client.disconnect()
+                    await self._safe_disconnect(client, session_name)
                     return
 
-                if settings.TARGET_CHAT_ID:
+                if send_start and settings.TARGET_CHAT_ID:
                     await client.send_message(
                         entity=settings.TARGET_CHAT_ID,
                         message="/start",
@@ -237,11 +271,20 @@ class TelethonPoolManager:
                 )
 
             except Exception as e:
-                self.last_errors.append(f"{session_name}: {e}")
+                error_text = str(e)
+                self.last_errors.append(f"{session_name}: {error_text}")
                 logger.error(
-                    f"❌ Ошибка загрузки {session_name}: {e}"
+                    f"❌ Ошибка загрузки {session_name}: {error_text}"
                 )
-                await client.disconnect()
+                await self._safe_disconnect(client, session_name)
+
+    async def _safe_disconnect(
+        self,
+        client: TelegramClient,
+        session_name: str,
+    ) -> None:
+        with suppress(Exception):
+            await client.disconnect()
 
     def _build_pool_session(
         self,
@@ -498,7 +541,7 @@ class TelethonPoolManager:
                 session.status = "active"
 
     async def disconnect_all(self) -> None:
-        for client in self._clients.values():
-            await client.disconnect()
+        for session_name, client in self._clients.items():
+            await self._safe_disconnect(client, session_name)
 
         self._clients.clear()
