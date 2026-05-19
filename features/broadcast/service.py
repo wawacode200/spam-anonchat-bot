@@ -222,7 +222,8 @@ class BroadcastService:
         self._task = asyncio.create_task(self._run())
         logger.info(
             f"🚀 Рассылка запущена | "
-            f"Пакет={self.effective_batch_size} "
+            f"За раз={self.desired_batch_size} "
+            f"| Доступно={self.effective_batch_size} "
             f"| Интервал={self.interval} сек"
         )
 

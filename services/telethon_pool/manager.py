@@ -251,6 +251,19 @@ class TelethonPoolManager:
                     await self._safe_disconnect(client, session_name)
                     return
 
+                pool_session = self._build_pool_session(
+                    session_name=session_name,
+                    persisted_state=persisted_states.get(session_name),
+                )
+
+                if pool_session.status != "active":
+                    self.sessions.append(pool_session)
+                    await self._safe_disconnect(client, session_name)
+                    logger.info(
+                        f"⏸ {session_name} загружена со статусом {pool_session.status}"
+                    )
+                    return
+
                 if send_start and settings.TARGET_CHAT_ID:
                     await client.send_message(
                         entity=settings.TARGET_CHAT_ID,
@@ -261,13 +274,9 @@ class TelethonPoolManager:
                     )
 
                 self._clients[session_name] = client
-                pool_session = self._build_pool_session(
-                    session_name=session_name,
-                    persisted_state=persisted_states.get(session_name),
-                )
                 self.sessions.append(pool_session)
                 logger.info(
-                    f"✅ {session_name} успешно загружена"
+                    f"✅ {session_name} успешно загружена со статусом active"
                 )
 
             except Exception as e:
