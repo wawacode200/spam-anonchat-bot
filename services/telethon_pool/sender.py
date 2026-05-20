@@ -148,13 +148,9 @@ class TelethonSender:
                         )
 
         except asyncio.TimeoutError:
-            self.pool.mark_paused(
+            self.pool.mark_dead(
                 session,
-                f"AnonChat not answer 10s",
-                pause_seconds=60,
-            )
-            logger.warning(
-                f"⌛ {session.name}: нет ответа более 10 секунд"
+            "Низкая порядочность",
             )
 
         except FloodWaitError as e:
