@@ -267,6 +267,10 @@ class BroadcastService:
 
         try:
             while self.is_running:
+                await self.pool.replenish_clients(
+                    active_target=self.desired_batch_size,
+                    send_start=True,
+                )
                 active_sessions_count = self.pool.active_sessions_count()
 
                 if active_sessions_count == 0:
@@ -296,7 +300,13 @@ class BroadcastService:
                 logger.info(
                     f"⏳ Интервальная пауза: {self.interval}сек."
                 )
-                await asyncio.sleep(self.interval)
+                await asyncio.gather(
+                    asyncio.sleep(self.interval),
+                    self.pool.replenish_clients(
+                        active_target=self.desired_batch_size,
+                        send_start=True,
+                    ),
+                )
 
         except asyncio.CancelledError:
             self.pool.reset_after_stop()

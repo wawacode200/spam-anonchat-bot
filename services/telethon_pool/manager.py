@@ -118,6 +118,44 @@ class TelethonPoolManager:
                 f"📊 Загружено аккаунтов: {len(self.sessions)}"
             )
 
+    async def replenish_clients(
+        self,
+        active_target: int,
+        send_start: bool = False,
+    ) -> None:
+        async with self._load_lock:
+            self.restore_available_sessions()
+
+            if self.active_sessions_count() >= active_target:
+                return
+
+            persisted_states = await self._load_persisted_states()
+            known_session_names = {
+                session.name
+                for session in self.sessions
+            }
+            files = [
+                file
+                for file in sorted(self.sessions_dir.glob("*.session"))
+                if file.stem not in known_session_names
+            ]
+
+            if not files:
+                return
+
+            logger.info(
+                f"🔄 Добор сессий до {active_target} активных..."
+            )
+            await self._load_clients_until_limit(
+                files=files,
+                persisted_states=persisted_states,
+                active_limit=active_target,
+                send_start=send_start,
+            )
+            logger.info(
+                f"📊 Активных после добора: {self.active_sessions_count()}"
+            )
+
     async def _load_all_clients(
         self,
         files: list[Path],
