@@ -79,7 +79,10 @@ class TelethonSender:
                     response = await conv.get_response()
                     response_text = response.raw_text.lower()
 
-                    if "собеседник найден" in response_text:
+                    if "собеседник закончил с вами связь" in response_text:
+                        await client.send_message(entity=chat_id, message="/next")
+
+                    elif "собеседник найден" in response_text:
                         logger.info(
                             f"🎯 {session.name}: собеседник найден"
                         )
@@ -87,7 +90,7 @@ class TelethonSender:
                         await client.send_message(entity=chat_id, message="👅 Хочешь грязный анонимный чат?")
                         await asyncio.sleep(0.1)
                         await client.send_message(entity=chat_id, message=text)
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)
                         await client.send_message(entity=chat_id, message="/stop")
                         logger.info(
                             f"✉️ {session.name}: сообщение отправлено"
@@ -135,6 +138,9 @@ class TelethonSender:
                             logger.info(
                                 f"✅ {session.name}: капча решена"
                             )
+
+                    elif "если хотите, оставьте мнение" in response_text:
+                        continue
 
                     else:
                         logger.info(
