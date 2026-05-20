@@ -4,6 +4,7 @@ from contextlib import suppress
 import logging
 from config import settings
 from database.repositories.broadcast_settings import BroadcastSettingsRepository
+from database.repositories.telethon_sessions import TelethonSessionsRepository
 from services.telethon_pool.manager import TelethonPoolManager
 from services.telethon_pool.sender import TelethonSender
 import logging
@@ -120,6 +121,29 @@ class BroadcastService:
             result.append(f"{session.name}: до {available_at}")
 
         return result
+
+    async def reset_session_states(
+        self,
+        session: AsyncSession,
+    ) -> tuple[bool, str]:
+        if self.is_running:
+            return False, "Нельзя сбрасывать статусы во время рассылки"
+        if self.is_checking:
+            return False, "Нельзя сбрасывать статусы во время проверки сессий"
+
+        repository = TelethonSessionsRepository(session)
+        db_count = await repository.count_all()
+        reset_count = await repository.reset_all()
+        loaded_count = self.pool.reset_loaded_states()
+        self.normalize_batch_size()
+
+        if db_count == 0 and loaded_count == 0:
+            return True, "Статусов сессий для сброса нет"
+
+        return (
+            True,
+            f"Статусы сброшены: БД {reset_count}, в памяти {loaded_count}",
+        )
 
     def validate_start(self) -> list[str]:
         errors = []

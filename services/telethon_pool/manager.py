@@ -601,6 +601,17 @@ class TelethonPoolManager:
             if session.status == "busy":
                 session.status = "active"
 
+    def reset_loaded_states(self) -> int:
+        for session in self.sessions:
+            session.status = "active"
+            session.available_at = None
+            session.last_error = None
+
+        self.last_errors.clear()
+        self._index = 0
+
+        return len(self.sessions)
+
     async def disconnect_all(self) -> None:
         for session_name, client in self._clients.items():
             await self._safe_disconnect(client, session_name)

@@ -314,6 +314,20 @@ async def show_paused_sessions(callback: CallbackQuery) -> None:
     )
 
 
+@router.callback_query(F.data == "bc:reset_sessions")
+async def reset_session_states(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    ok, message = await service.reset_session_states(session)
+
+    await update_menu(callback)
+    await callback.answer(message, show_alert=True)
+
+    if not ok:
+        logging.getLogger("app").warning(message)
+
+
 @router.callback_query(F.data.startswith("bc:batch:"))
 async def change_batch(
     callback: CallbackQuery,

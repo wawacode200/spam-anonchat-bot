@@ -46,6 +46,9 @@ def start_keyboard(
                 InlineKeyboardButton(text=f"Добавить сессии .session", callback_data="sessions:add"),
             ],
             [
+                InlineKeyboardButton(text="Сбросить статусы сессий", callback_data="bc:reset_sessions"),
+            ],
+            [
                 InlineKeyboardButton(text="За раз", callback_data="bc:noop"),
             ],
             [
