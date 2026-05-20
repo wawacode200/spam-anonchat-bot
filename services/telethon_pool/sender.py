@@ -83,11 +83,11 @@ class TelethonSender:
                         logger.info(
                             f"🎯 {session.name}: собеседник найден"
                         )
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.5)
                         await client.send_message(entity=chat_id, message="👅 Хочешь грязный анонимный чат?")
                         await asyncio.sleep(0.1)
                         await client.send_message(entity=chat_id, message=text)
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.5)
                         await client.send_message(entity=chat_id, message="/stop")
                         logger.info(
                             f"✉️ {session.name}: сообщение отправлено"
@@ -135,6 +135,11 @@ class TelethonSender:
                             logger.info(
                                 f"✅ {session.name}: капча решена"
                             )
+
+                    else:
+                        logger.info(
+                            f"🚫 {session.name}: {response_text}"
+                        )
 
         except asyncio.TimeoutError:
             self.pool.mark_paused(
