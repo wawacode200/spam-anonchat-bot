@@ -139,13 +139,13 @@ class TelethonSender:
                                 f"✅ {session.name}: капча решена"
                             )
 
-                    elif "если хотите, оставьте мнение" in response_text:
-                        continue
-
-                    else:
-                        logger.info(
-                            f"🚫 {session.name}: {response_text}"
-                        )
+                    # elif "если хотите, оставьте мнение" in response_text:
+                    #     continue
+                    #
+                    # else:
+                    #     logger.info(
+                    #         f"🚫 {session.name}: {response_text}"
+                    #     )
 
         except asyncio.TimeoutError:
             self.pool.mark_dead(
