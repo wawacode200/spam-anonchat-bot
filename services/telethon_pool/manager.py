@@ -256,17 +256,6 @@ class TelethonPoolManager:
             persisted_state = persisted_states.get(session_name)
 
             if persisted_state is not None and persisted_state.status == "dead":
-                pool_session = self._build_pool_session(
-                    session_name=session_name,
-                    persisted_state=persisted_state,
-                )
-
-                async with self._sessions_lock:
-                    self.sessions.append(pool_session)
-
-                logger.info(
-                    f"💀 {session_name} пропущена: статус dead"
-                )
                 return
 
             country_code = self.detect_country_code(session_name)
