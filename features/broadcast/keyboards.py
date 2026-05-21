@@ -10,6 +10,40 @@ MAIN_MENU_BUTTON_TEXT = "Главное меню"
 START_BUTTON_TEXT = "Запустить"
 STOP_BUTTON_TEXT = "Остановить"
 
+RESET_COUNTRY_CODES = [
+    "us",
+    "ca",
+    "gb",
+    "de",
+    "es",
+    "it",
+    "mx",
+    "ar",
+    "br",
+    "cl",
+    "co",
+    "pe",
+    "ve",
+    "ec",
+    "bo",
+    "uy",
+]
+
+
+def reset_country_rows() -> list[list[InlineKeyboardButton]]:
+    buttons = [
+        InlineKeyboardButton(
+            text=country_code.upper(),
+            callback_data=f"bc:reset_country:{country_code}",
+        )
+        for country_code in RESET_COUNTRY_CODES
+    ]
+
+    return [
+        buttons[start:start + 4]
+        for start in range(0, len(buttons), 4)
+    ]
+
 
 def start_keyboard(
     desired_batch_size: int,
@@ -48,6 +82,10 @@ def start_keyboard(
             [
                 InlineKeyboardButton(text="Сбросить статусы сессий", callback_data="bc:reset_sessions"),
             ],
+            [
+                InlineKeyboardButton(text="Сброс по странам", callback_data="bc:noop"),
+            ],
+            *reset_country_rows(),
             [
                 InlineKeyboardButton(text="Убить все аккаунты", callback_data="bc:kill_sessions"),
             ],

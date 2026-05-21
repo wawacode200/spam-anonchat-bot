@@ -78,6 +78,13 @@ class BroadcastService:
             for file in sorted(self.pool.sessions_dir.glob("*.session"))
         ]
 
+    def session_file_names_by_country(self, country_code: str) -> list[str]:
+        return [
+            name
+            for name in self.session_file_names()
+            if self.pool.detect_country_code(name) == country_code
+        ]
+
     def available_sessions_count(self) -> int:
         loaded_sessions_count = self.pool.loaded_sessions_count()
 
@@ -155,6 +162,35 @@ class BroadcastService:
         return (
             True,
             f"Статусы сброшены: БД {reset_count}, файлов {file_count}, в памяти {loaded_count}",
+        )
+
+    async def reset_session_states_by_country(
+        self,
+        session: AsyncSession,
+        country_code: str,
+    ) -> tuple[bool, str]:
+        if self.is_running:
+            return False, "Нельзя сбрасывать статусы во время рассылки"
+        if self.is_checking:
+            return False, "Нельзя сбрасывать статусы во время проверки сессий"
+
+        session_names = self.session_file_names_by_country(country_code)
+
+        if not session_names:
+            return True, f"Нет .session файлов для {country_code.upper()}"
+
+        repository = TelethonSessionsRepository(session)
+        reset_count = await repository.set_all(
+            names=session_names,
+            status="active",
+        )
+        await self.pool.disconnect_all()
+        loaded_count = self.pool.clear_runtime_state()
+        self.normalize_batch_size()
+
+        return (
+            True,
+            f"{country_code.upper()}: сброшено {reset_count}, очищено в памяти {loaded_count}",
         )
 
     async def kill_session_states(
