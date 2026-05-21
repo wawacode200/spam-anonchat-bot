@@ -69,7 +69,7 @@ class TelethonSender:
                 session,
             )
 
-            async with client.conversation(chat_id, timeout=10) as conv:
+            async with client.conversation(chat_id, timeout=15) as conv:
                 logger.info(
                     f"📨 {session.name}: запуск поиска собеседника"
                 )
