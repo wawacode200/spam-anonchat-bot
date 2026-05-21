@@ -154,9 +154,10 @@ class TelethonSender:
                     #     )
 
         except asyncio.TimeoutError:
-            self.pool.mark_dead(
+            self.pool.mark_paused(
                 session,
             "Низкая порядочность",
+                pause_seconds=10
             )
 
         except FloodWaitError as e:
