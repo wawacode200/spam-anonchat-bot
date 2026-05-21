@@ -72,6 +72,12 @@ class BroadcastService:
     def session_files_count(self) -> int:
         return len(list(self.pool.sessions_dir.glob("*.session")))
 
+    def session_file_names(self) -> list[str]:
+        return [
+            file.stem
+            for file in sorted(self.pool.sessions_dir.glob("*.session"))
+        ]
+
     def available_sessions_count(self) -> int:
         loaded_sessions_count = self.pool.loaded_sessions_count()
 
@@ -132,17 +138,56 @@ class BroadcastService:
             return False, "Нельзя сбрасывать статусы во время проверки сессий"
 
         repository = TelethonSessionsRepository(session)
+        session_names = self.session_file_names()
         db_count = await repository.count_all()
         reset_count = await repository.reset_all()
-        loaded_count = self.pool.reset_loaded_states()
+        file_count = await repository.set_all(
+            names=session_names,
+            status="active",
+        )
+        await self.pool.disconnect_all()
+        loaded_count = self.pool.clear_runtime_state()
         self.normalize_batch_size()
 
-        if db_count == 0 and loaded_count == 0:
+        if db_count == 0 and file_count == 0 and loaded_count == 0:
             return True, "Статусов сессий для сброса нет"
 
         return (
             True,
-            f"Статусы сброшены: БД {reset_count}, в памяти {loaded_count}",
+            f"Статусы сброшены: БД {reset_count}, файлов {file_count}, в памяти {loaded_count}",
+        )
+
+    async def kill_session_states(
+        self,
+        session: AsyncSession,
+    ) -> tuple[bool, str]:
+        if self.is_running:
+            return False, "Нельзя убивать аккаунты во время рассылки"
+        if self.is_checking:
+            return False, "Нельзя убивать аккаунты во время проверки сессий"
+
+        session_names = self.session_file_names()
+
+        if not session_names:
+            return True, "Нет .session файлов для убийства"
+
+        error = "Killed manually"
+        repository = TelethonSessionsRepository(session)
+        killed_count = await repository.set_all(
+            names=session_names,
+            status="dead",
+            last_error=error,
+        )
+        await self.pool.disconnect_all()
+        loaded_count = self.pool.set_runtime_dead_states(
+            names=session_names,
+            error=error,
+        )
+        self.normalize_batch_size()
+
+        return (
+            True,
+            f"Аккаунты убиты: БД {killed_count}, в памяти {loaded_count}",
         )
 
     def validate_start(self) -> list[str]:

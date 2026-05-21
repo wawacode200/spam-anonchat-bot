@@ -253,6 +253,22 @@ class TelethonPoolManager:
                 return
 
             session_name = file.stem
+            persisted_state = persisted_states.get(session_name)
+
+            if persisted_state is not None and persisted_state.status == "dead":
+                pool_session = self._build_pool_session(
+                    session_name=session_name,
+                    persisted_state=persisted_state,
+                )
+
+                async with self._sessions_lock:
+                    self.sessions.append(pool_session)
+
+                logger.info(
+                    f"💀 {session_name} пропущена: статус dead"
+                )
+                return
+
             country_code = self.detect_country_code(session_name)
 
             if country_code is None:
@@ -296,7 +312,7 @@ class TelethonPoolManager:
 
                 pool_session = self._build_pool_session(
                     session_name=session_name,
-                    persisted_state=persisted_states.get(session_name),
+                    persisted_state=persisted_state,
                 )
 
                 if pool_session.status != "active":
@@ -601,12 +617,27 @@ class TelethonPoolManager:
             if session.status == "busy":
                 session.status = "active"
 
-    def reset_loaded_states(self) -> int:
-        for session in self.sessions:
-            session.status = "active"
-            session.available_at = None
-            session.last_error = None
+    def clear_runtime_state(self) -> int:
+        count = len(self.sessions)
+        self.sessions.clear()
+        self.last_errors.clear()
+        self._index = 0
 
+        return count
+
+    def set_runtime_dead_states(
+        self,
+        names: list[str],
+        error: str,
+    ) -> int:
+        self.sessions = [
+            PoolSession(
+                name=name,
+                status="dead",
+                last_error=error,
+            )
+            for name in names
+        ]
         self.last_errors.clear()
         self._index = 0
 

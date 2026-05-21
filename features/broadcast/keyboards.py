@@ -49,6 +49,9 @@ def start_keyboard(
                 InlineKeyboardButton(text="Сбросить статусы сессий", callback_data="bc:reset_sessions"),
             ],
             [
+                InlineKeyboardButton(text="Убить все аккаунты", callback_data="bc:kill_sessions"),
+            ],
+            [
                 InlineKeyboardButton(text="За раз", callback_data="bc:noop"),
             ],
             [

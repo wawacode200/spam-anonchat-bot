@@ -52,6 +52,22 @@ class TelethonSessionsRepository:
 
         return result.rowcount or 0
 
+    async def set_all(
+        self,
+        names: list[str],
+        status: str,
+        last_error: str | None = None,
+    ) -> int:
+        for name in names:
+            await self.upsert(
+                name=name,
+                status=status,
+                available_at=None,
+                last_error=last_error,
+            )
+
+        return len(names)
+
     async def count_all(self) -> int:
         result = await self.session.execute(
             select(func.count()).select_from(TelethonSessionState)

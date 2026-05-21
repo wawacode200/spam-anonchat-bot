@@ -328,6 +328,20 @@ async def reset_session_states(
         logging.getLogger("app").warning(message)
 
 
+@router.callback_query(F.data == "bc:kill_sessions")
+async def kill_session_states(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    ok, message = await service.kill_session_states(session)
+
+    await update_menu(callback)
+    await callback.answer(message, show_alert=True)
+
+    if not ok:
+        logging.getLogger("app").warning(message)
+
+
 @router.callback_query(F.data.startswith("bc:batch:"))
 async def change_batch(
     callback: CallbackQuery,
