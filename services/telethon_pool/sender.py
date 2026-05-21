@@ -86,15 +86,21 @@ class TelethonSender:
                         logger.info(
                             f"🎯 {session.name}: собеседник найден"
                         )
-                        await asyncio.sleep(0.5)
-                        await client.send_message(entity=chat_id, message="👅 Это самый пошлый анонимный чат?")
-                        await asyncio.sleep(0.1)
-                        await client.send_message(entity=chat_id, message=text)
-                        await asyncio.sleep(1)
-                        await client.send_message(entity=chat_id, message="/stop")
-                        logger.info(
-                            f"✉️ {session.name}: сообщение отправлено"
-                        )
+
+                        response = await conv.get_response()
+                        response_text = response.raw_text.lower()
+
+                        if "собеседник закончил с вами связь" not in response_text:
+                            await asyncio.sleep(1)
+                            await client.send_message(entity=chat_id, message="👅 Это самый пошлый анонимный чат?")
+                            await asyncio.sleep(0.1)
+                            await client.send_message(entity=chat_id, message=text)
+                            await asyncio.sleep(1)
+                            await client.send_message(entity=chat_id, message="/stop")
+                            logger.info(
+                                f"✉️ {session.name}: сообщение отправлено"
+                            )
+
                         self.pool.mark_active(session)
                         break
 
