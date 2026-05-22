@@ -26,6 +26,10 @@ async def upload_session(message: Message, bot: Bot) -> None:
 
     file_path = SESSIONS_DIR / document.file_name
 
+    if file_path.exists():
+        await message.answer(f"Файл уже существует: <code>{document.file_name}</code>")
+        return
+
     await bot.download(
         document,
         destination=file_path,
