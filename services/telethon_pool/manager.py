@@ -307,6 +307,7 @@ class TelethonPoolManager:
                 if pool_session.status != "active":
                     async with self._sessions_lock:
                         self.sessions.append(pool_session)
+                    await self._save_session_state(pool_session)
                     await self._safe_disconnect(client, session_name)
                     logger.info(
                         f"⏸ {session_name} загружена со статусом {pool_session.status}"
@@ -332,6 +333,7 @@ class TelethonPoolManager:
 
                     self._clients[session_name] = client
                     self.sessions.append(pool_session)
+                    await self._save_session_state(pool_session)
                     logger.info(
                         f"✅ {session_name} успешно загружена со статусом active"
                     )
@@ -605,6 +607,7 @@ class TelethonPoolManager:
         for session in self.sessions:
             if session.status == "busy":
                 session.status = "active"
+                self._schedule_save_session_state(session)
 
     def clear_runtime_state(self) -> int:
         count = len(self.sessions)

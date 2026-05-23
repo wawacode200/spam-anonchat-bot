@@ -1,4 +1,5 @@
 import asyncio
+from collections import Counter
 from contextlib import suppress
 
 import logging
@@ -22,6 +23,14 @@ class BroadcastService:
         self.is_stopping = False
         self.broadcast_text = settings.BROADCAST_TEXT
         self._waiting_text_menus: dict[int, tuple[int, int]] = {}
+        self._persisted_status_counts = {
+            "loaded": 0,
+            "active": 0,
+            "busy": 0,
+            "paused": 0,
+            "dead": 0,
+        }
+        self.reset_country_codes: list[str] = []
 
         self.pool = TelethonPoolManager()
         self.sender = TelethonSender(self.pool)
@@ -35,6 +44,7 @@ class BroadcastService:
         self.desired_batch_size = broadcast_settings.batch_size
         self.interval = broadcast_settings.interval
         self.broadcast_text = broadcast_settings.broadcast_text
+        await self.refresh_session_state_cache(session)
         self.normalize_batch_size()
 
     async def save_settings(self, session: AsyncSession) -> None:
@@ -44,6 +54,33 @@ class BroadcastService:
         broadcast_settings.batch_size = self.desired_batch_size
         broadcast_settings.interval = self.interval
         broadcast_settings.broadcast_text = self.broadcast_text
+
+    async def refresh_session_state_cache(self, session: AsyncSession) -> None:
+        repository = TelethonSessionsRepository(session)
+        persisted_states = await repository.get_all_map()
+        file_names = set(self.session_file_names())
+        file_states = [
+            state
+            for name, state in persisted_states.items()
+            if name in file_names
+        ]
+        counts = Counter(state.status for state in file_states)
+
+        self._persisted_status_counts = {
+            "loaded": len(file_states),
+            "active": counts.get("active", 0),
+            "busy": counts.get("busy", 0),
+            "paused": counts.get("paused", 0),
+            "dead": counts.get("dead", 0),
+        }
+
+        self.reset_country_codes = sorted(
+            {
+                country_code
+                for state in file_states
+                if (country_code := self.pool.detect_country_code(state.name)) is not None
+            }
+        )
 
     def change_batch_size(self, action: str) -> None:
         if action == "dec10":
@@ -112,7 +149,11 @@ class BroadcastService:
         )
 
     def session_status_counts(self) -> dict[str, int]:
-        counts = self.pool.status_counts()
+        if self.pool.loaded_sessions_count() > 0:
+            counts = self.pool.status_counts()
+        else:
+            counts = dict(self._persisted_status_counts)
+
         counts["files"] = self.session_files_count()
 
         return counts
@@ -154,6 +195,7 @@ class BroadcastService:
         )
         await self.pool.disconnect_all()
         loaded_count = self.pool.clear_runtime_state()
+        await self.refresh_session_state_cache(session)
         self.normalize_batch_size()
 
         if db_count == 0 and file_count == 0 and loaded_count == 0:
@@ -186,6 +228,7 @@ class BroadcastService:
         )
         await self.pool.disconnect_all()
         loaded_count = self.pool.clear_runtime_state()
+        await self.refresh_session_state_cache(session)
         self.normalize_batch_size()
 
         return (
@@ -219,11 +262,59 @@ class BroadcastService:
             names=session_names,
             error=error,
         )
+        await self.refresh_session_state_cache(session)
         self.normalize_batch_size()
 
         return (
             True,
             f"Аккаунты убиты: БД {killed_count}, в памяти {loaded_count}",
+        )
+
+    async def delete_session_files(
+        self,
+        session: AsyncSession,
+    ) -> tuple[bool, str]:
+        if self.is_running:
+            return False, "Нельзя удалять файлы аккаунтов во время рассылки"
+        if self.is_checking:
+            return False, "Нельзя удалять файлы аккаунтов во время проверки сессий"
+
+        files = sorted(self.pool.sessions_dir.glob("*.session"))
+
+        if not files:
+            return True, "Нет .session файлов для удаления"
+
+        await self.pool.disconnect_all()
+        loaded_count = self.pool.clear_runtime_state()
+
+        deleted_files = []
+        failed: list[str] = []
+
+        for file in files:
+            try:
+                file.unlink()
+                deleted_files.append(file)
+            except OSError as error:
+                failed.append(f"{file.name}: {error}")
+
+        repository = TelethonSessionsRepository(session)
+        db_deleted_count = await repository.delete_by_names(
+            names=[file.stem for file in deleted_files],
+        )
+        await self.refresh_session_state_cache(session)
+        self.normalize_batch_size()
+
+        if failed:
+            return (
+                False,
+                "Удалено файлов: "
+                f"{len(deleted_files)}, ошибок: {len(failed)}, "
+                f"БД очищено: {db_deleted_count}",
+            )
+
+        return (
+            True,
+            f"Файлы аккаунтов удалены: {len(deleted_files)}, БД очищено: {db_deleted_count}, в памяти {loaded_count}",
         )
 
     def validate_start(self) -> list[str]:

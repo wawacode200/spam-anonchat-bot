@@ -37,6 +37,7 @@ def render_keyboard():
         is_running=service.is_running,
         is_checking=service.is_checking,
         is_stopping=service.is_stopping,
+        reset_country_codes=service.reset_country_codes,
     )
 
 
@@ -273,9 +274,13 @@ async def noop(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "bc:check")
-async def check_sessions(callback: CallbackQuery) -> None:
+async def check_sessions(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
     await callback.answer("Проверяю сессии...")
     ok, message = await service.check_sessions()
+    await service.refresh_session_state_cache(session)
 
     await update_menu(callback)
     if not ok:
@@ -334,6 +339,20 @@ async def kill_session_states(
     session: AsyncSession,
 ) -> None:
     ok, message = await service.kill_session_states(session)
+
+    await update_menu(callback)
+    await callback.answer(message, show_alert=True)
+
+    if not ok:
+        logging.getLogger("app").warning(message)
+
+
+@router.callback_query(F.data == "bc:delete_session_files")
+async def delete_session_files(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    ok, message = await service.delete_session_files(session)
 
     await update_menu(callback)
     await callback.answer(message, show_alert=True)

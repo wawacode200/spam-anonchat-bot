@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import TelethonSessionState
@@ -19,6 +19,17 @@ class TelethonSessionsRepository:
             state.name: state
             for state in result.scalars().all()
         }
+
+    async def delete_by_names(self, names: list[str]) -> int:
+        if not names:
+            return 0
+
+        result = await self.session.execute(
+            delete(TelethonSessionState)
+            .where(TelethonSessionState.name.in_(names))
+        )
+
+        return result.rowcount or 0
 
     async def upsert(
         self,
