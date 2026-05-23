@@ -347,17 +347,11 @@ class BroadcastService:
             files=files,
             chat_id=settings.TARGET_CHAT_ID,
         )
-        cleared_name_set = set(cleared_names)
-        files_to_delete = [
-            file
-            for file in files
-            if file.stem in cleared_name_set
-        ]
 
         deleted_files = []
         failed: list[str] = []
 
-        for file in files_to_delete:
+        for file in files:
             try:
                 file.unlink()
                 deleted_files.append(file)
