@@ -81,18 +81,12 @@ def start_keyboard(
                 else []
             ),
             *country_rows(reset_country_codes, "bc:reset_country"),
-            [
-                InlineKeyboardButton(text="Убить все аккаунты", callback_data="bc:kill_sessions"),
-            ],
             *(
                 [[InlineKeyboardButton(text="Убить по странам", callback_data="bc:noop")]]
                 if reset_country_codes
                 else []
             ),
             *country_rows(reset_country_codes, "bc:kill_country"),
-            [
-                InlineKeyboardButton(text="Удалить все аккаунты", callback_data="bc:delete_session_files"),
-            ],
             *(
                 [[InlineKeyboardButton(text="Удалить по странам", callback_data="bc:noop")]]
                 if reset_country_codes
