@@ -37,6 +37,27 @@ def country_rows(
     ]
 
 
+def delete_confirmation_keyboard(country_code: str) -> InlineKeyboardMarkup:
+    flag = country_flag(country_code)
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"Удалить {flag}",
+                    callback_data=f"bc:delete_confirm:{country_code}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Отмена",
+                    callback_data="bc:delete_cancel",
+                ),
+            ],
+        ]
+    )
+
+
 def start_keyboard(
     desired_batch_size: int,
     effective_batch_size: int,

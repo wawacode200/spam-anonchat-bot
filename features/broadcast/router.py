@@ -1,4 +1,5 @@
 import logging
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -10,6 +11,8 @@ from .keyboards import (
     MAIN_MENU_BUTTON_TEXT,
     START_BUTTON_TEXT,
     STOP_BUTTON_TEXT,
+    country_flag,
+    delete_confirmation_keyboard,
     main_menu_keyboard,
     start_keyboard,
 )
@@ -17,6 +20,7 @@ from .service import BroadcastService
 from .texts import render_start_text
 
 from common.filters import AdminFilter
+from config import settings
 
 router = Router()
 router.message.filter(AdminFilter())
@@ -385,13 +389,74 @@ async def delete_session_files_by_country(
     session: AsyncSession,
 ) -> None:
     country_code = callback.data.split(":")[-1]
+    files = service.session_files_by_country(country_code)
+
+    if not files:
+        await callback.answer(
+            f"{country_code.upper()}: нет .session файлов для удаления",
+            show_alert=True,
+        )
+        return
+    if not settings.TARGET_CHAT_ID:
+        await callback.answer(
+            "TARGET_CHAT_ID не задан, чат перед удалением очистить нельзя",
+            show_alert=True,
+        )
+        return
+
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    flag = country_flag(country_code)
+    target_chat = escape(settings.TARGET_CHAT_ID)
+    preview_names = "\n".join(
+        f"<code>{escape(file.name)}</code>"
+        for file in files[:5]
+    )
+    more_text = (
+        f"\n...и ещё {len(files) - 5}"
+        if len(files) > 5
+        else ""
+    )
+    await callback.message.edit_text(
+        "<b>Удаление аккаунтов</b>\n\n"
+        f"Страна: {flag} {country_code.upper()}\n"
+        f"Файлов: {len(files)}\n"
+        f"Чат для очистки: <code>{target_chat}</code>\n\n"
+        f"<b>Будут затронуты:</b>\n{preview_names}{more_text}\n\n"
+        "Сначала бот очистит этот чат из выбранных аккаунтов. "
+        "Потом удалит только те .session файлы, где очистка прошла успешно.",
+        reply_markup=delete_confirmation_keyboard(country_code),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "bc:delete_cancel")
+async def cancel_delete_session_files(callback: CallbackQuery) -> None:
+    await update_menu(callback)
+    await callback.answer("Удаление отменено")
+
+
+@router.callback_query(F.data.startswith("bc:delete_confirm:"))
+async def confirm_delete_session_files_by_country(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    country_code = callback.data.split(":")[-1]
+
+    await callback.answer("Удаляю, это может занять время...")
     ok, message = await service.delete_session_files_by_country(
         session=session,
         country_code=country_code,
     )
 
     await update_menu(callback)
-    await callback.answer(message, show_alert=True)
+
+    if callback.message is not None:
+        await callback.message.answer(
+            f"<b>Результат удаления</b>\n{escape(message)}"
+        )
 
     if not ok:
         logging.getLogger("app").warning(message)
