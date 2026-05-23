@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("app")
 
+ERROR_DETAILS_LIMIT = 5
+
+
 class BroadcastService:
     def __init__(self) -> None:
         self.desired_batch_size = 5
@@ -369,11 +372,18 @@ class BroadcastService:
         self.normalize_batch_size()
 
         if failed or clear_errors:
+            error_details = [*clear_errors, *failed][:ERROR_DETAILS_LIMIT]
+            details_text = (
+                "\n" + "\n".join(error_details)
+                if error_details
+                else ""
+            )
             return (
                 False,
                 f"{label}: чат очищен {len(cleared_names)}/{len(files)}, "
                 f"удалено файлов {len(deleted_files)}, ошибок удаления {len(failed)}, "
-                f"ошибок очистки {len(clear_errors)}, БД очищено {db_deleted_count}",
+                f"ошибок очистки {len(clear_errors)}, БД очищено {db_deleted_count}"
+                f"{details_text}",
             )
 
         return (
