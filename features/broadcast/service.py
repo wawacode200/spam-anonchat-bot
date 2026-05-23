@@ -1,6 +1,7 @@
 import asyncio
 from collections import Counter
 from contextlib import suppress
+from pathlib import Path
 
 import logging
 from config import settings
@@ -115,11 +116,20 @@ class BroadcastService:
             for file in sorted(self.pool.sessions_dir.glob("*.session"))
         ]
 
+    def session_files(self) -> list[Path]:
+        return sorted(self.pool.sessions_dir.glob("*.session"))
+
+    def session_files_by_country(self, country_code: str) -> list[Path]:
+        return [
+            file
+            for file in self.session_files()
+            if self.pool.detect_country_code(file.stem) == country_code
+        ]
+
     def session_file_names_by_country(self, country_code: str) -> list[str]:
         return [
-            name
-            for name in self.session_file_names()
-            if self.pool.detect_country_code(name) == country_code
+            file.stem
+            for file in self.session_files_by_country(country_code)
         ]
 
     def available_sessions_count(self) -> int:
@@ -240,15 +250,36 @@ class BroadcastService:
         self,
         session: AsyncSession,
     ) -> tuple[bool, str]:
+        return await self.kill_session_states_for_names(
+            session=session,
+            session_names=self.session_file_names(),
+            label="Аккаунты",
+        )
+
+    async def kill_session_states_by_country(
+        self,
+        session: AsyncSession,
+        country_code: str,
+    ) -> tuple[bool, str]:
+        return await self.kill_session_states_for_names(
+            session=session,
+            session_names=self.session_file_names_by_country(country_code),
+            label=country_code.upper(),
+        )
+
+    async def kill_session_states_for_names(
+        self,
+        session: AsyncSession,
+        session_names: list[str],
+        label: str,
+    ) -> tuple[bool, str]:
         if self.is_running:
             return False, "Нельзя убивать аккаунты во время рассылки"
         if self.is_checking:
             return False, "Нельзя убивать аккаунты во время проверки сессий"
 
-        session_names = self.session_file_names()
-
         if not session_names:
-            return True, "Нет .session файлов для убийства"
+            return True, f"{label}: нет .session файлов для убийства"
 
         error = "Killed manually"
         repository = TelethonSessionsRepository(session)
@@ -267,30 +298,63 @@ class BroadcastService:
 
         return (
             True,
-            f"Аккаунты убиты: БД {killed_count}, в памяти {loaded_count}",
+            f"{label}: убито в БД {killed_count}, в памяти {loaded_count}",
         )
 
     async def delete_session_files(
         self,
         session: AsyncSession,
     ) -> tuple[bool, str]:
+        return await self.delete_session_files_for_files(
+            session=session,
+            files=self.session_files(),
+            label="Все аккаунты",
+        )
+
+    async def delete_session_files_by_country(
+        self,
+        session: AsyncSession,
+        country_code: str,
+    ) -> tuple[bool, str]:
+        return await self.delete_session_files_for_files(
+            session=session,
+            files=self.session_files_by_country(country_code),
+            label=country_code.upper(),
+        )
+
+    async def delete_session_files_for_files(
+        self,
+        session: AsyncSession,
+        files: list[Path],
+        label: str,
+    ) -> tuple[bool, str]:
         if self.is_running:
             return False, "Нельзя удалять файлы аккаунтов во время рассылки"
         if self.is_checking:
             return False, "Нельзя удалять файлы аккаунтов во время проверки сессий"
-
-        files = sorted(self.pool.sessions_dir.glob("*.session"))
+        if not settings.TARGET_CHAT_ID:
+            return False, "TARGET_CHAT_ID не задан, чат перед удалением очистить нельзя"
 
         if not files:
-            return True, "Нет .session файлов для удаления"
+            return True, f"{label}: нет .session файлов для удаления"
 
         await self.pool.disconnect_all()
         loaded_count = self.pool.clear_runtime_state()
+        cleared_names, clear_errors = await self.pool.clear_target_chat_for_files(
+            files=files,
+            chat_id=settings.TARGET_CHAT_ID,
+        )
+        cleared_name_set = set(cleared_names)
+        files_to_delete = [
+            file
+            for file in files
+            if file.stem in cleared_name_set
+        ]
 
         deleted_files = []
         failed: list[str] = []
 
-        for file in files:
+        for file in files_to_delete:
             try:
                 file.unlink()
                 deleted_files.append(file)
@@ -304,17 +368,17 @@ class BroadcastService:
         await self.refresh_session_state_cache(session)
         self.normalize_batch_size()
 
-        if failed:
+        if failed or clear_errors:
             return (
                 False,
-                "Удалено файлов: "
-                f"{len(deleted_files)}, ошибок: {len(failed)}, "
-                f"БД очищено: {db_deleted_count}",
+                f"{label}: чат очищен {len(cleared_names)}/{len(files)}, "
+                f"удалено файлов {len(deleted_files)}, ошибок удаления {len(failed)}, "
+                f"ошибок очистки {len(clear_errors)}, БД очищено {db_deleted_count}",
             )
 
         return (
             True,
-            f"Файлы аккаунтов удалены: {len(deleted_files)}, БД очищено: {db_deleted_count}, в памяти {loaded_count}",
+            f"{label}: чат очищен {len(cleared_names)}/{len(files)}, файлы удалены {len(deleted_files)}, БД очищено {db_deleted_count}, в памяти {loaded_count}",
         )
 
     def validate_start(self) -> list[str]:

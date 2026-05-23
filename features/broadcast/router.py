@@ -347,12 +347,48 @@ async def kill_session_states(
         logging.getLogger("app").warning(message)
 
 
+@router.callback_query(F.data.startswith("bc:kill_country:"))
+async def kill_session_states_by_country(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    country_code = callback.data.split(":")[-1]
+    ok, message = await service.kill_session_states_by_country(
+        session=session,
+        country_code=country_code,
+    )
+
+    await update_menu(callback)
+    await callback.answer(message, show_alert=True)
+
+    if not ok:
+        logging.getLogger("app").warning(message)
+
+
 @router.callback_query(F.data == "bc:delete_session_files")
 async def delete_session_files(
     callback: CallbackQuery,
     session: AsyncSession,
 ) -> None:
     ok, message = await service.delete_session_files(session)
+
+    await update_menu(callback)
+    await callback.answer(message, show_alert=True)
+
+    if not ok:
+        logging.getLogger("app").warning(message)
+
+
+@router.callback_query(F.data.startswith("bc:delete_country:"))
+async def delete_session_files_by_country(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
+    country_code = callback.data.split(":")[-1]
+    ok, message = await service.delete_session_files_by_country(
+        session=session,
+        country_code=country_code,
+    )
 
     await update_menu(callback)
     await callback.answer(message, show_alert=True)

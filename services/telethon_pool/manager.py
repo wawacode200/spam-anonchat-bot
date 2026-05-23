@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from telethon.sessions import SQLiteSession
 from telethon import TelegramClient
+from telethon.tl.functions.messages import DeleteHistoryRequest
 
 from common.logging.logger import logger
 from common.time import MSK, now_msk
@@ -353,6 +354,68 @@ class TelethonPoolManager:
     ) -> None:
         with suppress(Exception):
             await client.disconnect()
+
+    async def clear_target_chat_for_files(
+        self,
+        files: list[Path],
+        chat_id: int | str,
+    ) -> tuple[list[str], list[str]]:
+        cleared_names = []
+        errors = []
+
+        for file in files:
+            session_name = file.stem
+            country_code = self.detect_country_code(session_name)
+
+            if country_code is None:
+                errors.append(f"{session_name}: invalid phone session name")
+                continue
+
+            proxy = self.build_proxy(country_code)
+
+            if proxy is None:
+                errors.append(f"{session_name}: proxy not configured")
+                continue
+
+            client = TelegramClient(
+                BusyTimeoutSQLiteSession(
+                    str(file.with_suffix(""))
+                ),
+                api_id=settings.APP_ID,
+                api_hash=settings.API_HASH,
+                proxy=proxy,
+                connection_retries=1,
+                timeout=10,
+            )
+
+            try:
+                await client.connect()
+
+                if not await client.is_user_authorized():
+                    errors.append(f"{session_name}: not authorized")
+                    continue
+
+                input_peer = await client.get_input_entity(chat_id)
+                await client(
+                    DeleteHistoryRequest(
+                        peer=input_peer,
+                        max_id=0,
+                        just_clear=True,
+                        revoke=True,
+                    )
+                )
+                cleared_names.append(session_name)
+                logger.info(
+                    f"🧹 {session_name}: чат {chat_id} очищен"
+                )
+
+            except Exception as error:
+                errors.append(f"{session_name}: {error}")
+
+            finally:
+                await self._safe_disconnect(client, session_name)
+
+        return cleared_names, errors
 
     def _build_pool_session(
         self,
